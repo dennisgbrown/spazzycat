@@ -5,10 +5,10 @@
     ; Program:      Herding Cats
     ; Program by:   still mostly Darrell Spice, Jr
     ;
-    ; Heavily based on "Collect" program by:   Darrell Spice, Jr
+    ; Heavily based on "Collect" program by   Darrell Spice, Jr
     ; - See https://atariage.com/forums/blogs/entry/11157-step-14-add-animation/
     ;
-    ; Last Update:  May 25, 2020
+    ; Last Update:  July 13, 2020
     ;
     ; Move your player to collect cats.
     ;
@@ -56,7 +56,7 @@
     ; scanlines so actual height is 176 = 88*2
 ARENA_HEIGHT    = 87  
     ; height of boxes drawn by missile0, missile1 and ball
-BOX_HEIGHT      = 1
+BOX_HEIGHT      = 50
 
 ;===============================================================================
 ; Define RAM Usage
@@ -594,21 +594,21 @@ notP0PF:
         bvc notP0BL         ; if V is off, then player0 did not collide with ball
         ldy #0              ; which score to update
         ldx #4              ; which box was collected
-        jsr Collect2ptBox   ; update score and reposition box
+        jsr CollectOther    ; update score and reposition box
         
 notP0BL:        
-        bit CXM0P       ; V=player0/missile0
-        bvc notP0M0     ; if V is off then player0 did not collide with missile0
-        ldy #0          ; which score to update
-        ldx #2          ; which box was collected
-        jsr CollectBox  ; update score and reposition box
+        bit CXM0P        ; V=player0/missile0
+        bvc notP0M0      ; if V is off then player0 did not collide with missile0
+        ldy #0           ; which score to update
+        ldx #2           ; which box was collected
+        jsr CollectOther ; update score and reposition box
         
 notP0M0:
-        bit CXM1P       ; N=player0/missile1
-        bpl notP0M1     ; if N is off then player0 did not collide with missile1
-        ldy #0          ; which score to update
-        ldx #3          ; which box was collected
-        jsr CollectBox  ; update score and reposition box
+        bit CXM1P        ; N=player0/missile1
+        bpl notP0M1      ; if N is off then player0 did not collide with missile1
+        ldy #0           ; which score to update
+        ldx #3           ; which box was collected
+        jsr CollectOther ; update score and reposition box
         
 notP0M1:
         bit Players     ; test how many players are in this game variation
@@ -617,7 +617,7 @@ notP0M1:
         bpl OSwait      ; player0 did not collide wth player1
         ldy #0          ; which score to update
         ldx #1          ; which box was collected 
-        jsr CollectBox  ; update score and reposition box
+        jsr CollectCat  ; update score and reposition box
         jmp OSwait      ; 1 player game, so skip Right Player test
         
 RightPlayer:        
@@ -636,21 +636,21 @@ notP1PF:
         bvc notP1BL         ; if V is off, then player1 did not collide with ball
         ldy #1              ; which score to update
         ldx #4              ; which box was collected
-        jsr Collect2ptBox   ; update score and reposition box
+        jsr CollectOther    ; update score and reposition box
         
 notP1BL:        
-        bit CXM0P       ; N=player1/missile0
-        bpl notP1M0     ; if N is off then player1 did not collide with missile0
-        ldy #1          ; which score to update
-        ldx #2          ; which box was collected
-        jsr CollectBox  ; update score and reposition box
+        bit CXM0P        ; N=player1/missile0
+        bpl notP1M0      ; if N is off then player1 did not collide with missile0
+        ldy #1           ; which score to update
+        ldx #2           ; which box was collected
+        jsr CollectOther ; update score and reposition box
         
 notP1M0:
-        bit CXM1P       ; V=player1/missile1
-        bvc notP1M1     ; if V is off then player1 did not collide with missile1
-        ldy #1          ; which score to update
-        ldx #3          ; which box was collected
-        jsr CollectBox  ; update score and reposition box
+        bit CXM1P        ; V=player1/missile1
+        bvc notP1M1      ; if V is off then player1 did not collide with missile1
+        ldy #1           ; which score to update
+        ldx #3           ; which box was collected
+        jsr CollectOther ; update score and reposition box
         
 notP1M1:
     
@@ -707,7 +707,7 @@ NoTickSfx:
 ;===============================================================================
 ; ProcessJoystick
 ; --------------
-; Read joysticks and move humanoids
+; Read joysticks and move humanoids                    
 ;
 ; joystick directions are held in the SWCHA register of the RIOT chip.
 ; Directions are read via the following bit pattern:
@@ -1069,7 +1069,7 @@ SOCloop:
 Colors:   
         .byte $46   ; red        - goes into COLUPF, color for Arena (after Timer is drawn)
         .byte $86   ; blue       - goes into COLUP0, color for player0 and missile0
-        .byte $C6   ; green      - goes into COLUP1, color for player1 and missile1
+        .byte $36   ; orange     - goes into COLUP1, color for player1 and missile1
         .byte $64   ; purple     - goes into COLUPF, color for Timer
         .byte $00   ; black      - goes into COLUBK, color for background
         .byte $0A   ; light grey - goes into COLUPF, color for Arena (after Timer is drawn)
@@ -1307,20 +1307,26 @@ RLdone:
 ; Score is stored as Binary Coded Decimal, so we must set the Decimal flag
 ; before performing the addition.
 ;===============================================================================
-Collect2ptBox:
-        lda #2              ; 2 point box
-        .byte $2C           ; BIT with absolute addressing, trick that
-                            ; causes the lda #1 to be skipped over
-CollectBox:
-        lda #1              ; 1 point per box
+CollectCat:
+        lda #2              ; 2 points
         sed                 ; SEt Decimal flag
         clc                 ; CLear Carry bit
         adc Score,y         ; add to player's current score
-        bcc Not100          ; if the Carry is clear, score did not roll
+        bcc ScoreOK         ; if the Carry is clear, score did not roll
         sta GameState       ; stop the game (A holds 0)
         lda #$BB            ; B image is !! to show that score rolled
-Not100:        
+        jmp ScoreOK
+        
+CollectOther:
+        lda Score,y         ; -1 point box
+        sed                 ; SEt Decimal flag
+        clc                 ; CLear Carry bit
+        sbc #0              ; subtract 1 from player's current score
+        bmi DontStoreScore  ; if the score would go negative, don't store it
+
+ScoreOK:        
         sta Score,y         ; and save it
+DontStoreScore:
         cld                 ; CLear Decimal flag
         jsr RandomLocation  ; move box to new location
         ldy #sfxCOLLECT     ; select sound effect
